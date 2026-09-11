@@ -1,4 +1,4 @@
-# # Pulse
+# Pulse
 
 Distributed Service Reliability Platform
 
