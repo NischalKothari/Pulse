@@ -39,7 +39,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     new UsernamePasswordAuthenticationToken(
                             userId,
                             null,
-                            null
+                            java.util.Collections.emptyList()
                     );
 
             SecurityContextHolder
