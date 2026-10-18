@@ -1,5 +1,6 @@
 package com.pulse.api.monitorService.service.impl;
 
+import com.pulse.api.exception.IdempotencyKeyConflictException;
 import com.pulse.api.exception.ResourceNotFoundException;
 import com.pulse.api.monitorService.dto.CreateServiceRequest;
 import com.pulse.api.monitorService.dto.ServiceResponse;
@@ -208,4 +209,221 @@ public class ServiceServiceImplTest {
         assertThat(deleted).isFalse();
         verify(serviceRepository, never()).delete(any(MonitoredService.class));
     }
+
+    @Test
+    void createService_withSameKeyAndPayload_shouldReplayOriginalResponse()
+            throws Exception {
+
+        CreateServiceRequest request = new CreateServiceRequest(
+                "Google",
+                "https://google.com",
+                60,
+                5000
+        );
+
+        ServiceResponse originalResponse = new ServiceResponse(
+                serviceId,
+                "Google",
+                "https://google.com",
+                60,
+                5000,
+                "UNKNOWN",
+                Instant.parse("2026-01-01T10:00:00Z"),
+                Instant.parse("2026-01-01T10:00:00Z")
+        );
+
+        String key = "test-key-123";
+        String hash = "test-hash";
+
+        when(requestHashService.calculateHash(any(CreateServiceRequest.class)))
+                .thenReturn(hash);
+
+        when(idempotencyRecordRepository.claimKey(
+                eq(userId),
+                eq(IdempotencyOperation.CREATE_SERVICE.name()),
+                eq(key),
+                eq(hash)
+        )).thenReturn(0);
+
+        IdempotencyRecord completedRecord = new IdempotencyRecord(
+                userId,
+                IdempotencyOperation.CREATE_SERVICE,
+                key,
+                hash,
+                Instant.parse("2026-01-01T10:00:00Z")
+        );
+
+        completedRecord.setResponseStatus(201);
+        completedRecord.setResponseBody("{\"stored\":\"response\"}");
+
+        when(idempotencyRecordRepository.findById(any(IdempotencyRecordId.class)))
+                .thenReturn(Optional.of(completedRecord));
+
+        when(objectMapper.readValue(
+                any(String.class),
+                eq(ServiceResponse.class)
+        )).thenReturn(originalResponse);
+
+        ServiceResponse response =
+                serviceService.createService(request, userId, key);
+
+        assertThat(response).isEqualTo(originalResponse);
+
+        verify(serviceRepository, never()).save(any(MonitoredService.class));
+    }
+
+    @Test
+    void createService_withSameKeyAndDifferentPayload_shouldThrowConflict() {
+        CreateServiceRequest firstRequest = new CreateServiceRequest(
+                "Google",
+                "https://google.com",
+                60,
+                5000
+        );
+
+        CreateServiceRequest secondRequest = new CreateServiceRequest(
+                "GitHub",
+                "https://github.com",
+                60,
+                5000
+        );
+
+        String key = "test-key-123";
+
+        when(requestHashService.calculateHash(firstRequest))
+                .thenReturn("google-hash");
+
+        when(requestHashService.calculateHash(secondRequest))
+                .thenReturn("github-hash");
+
+        when(idempotencyRecordRepository.claimKey(
+                eq(userId),
+                eq(IdempotencyOperation.CREATE_SERVICE.name()),
+                eq(key),
+                eq("google-hash")
+        )).thenReturn(1);
+
+        when(idempotencyRecordRepository.claimKey(
+                eq(userId),
+                eq(IdempotencyOperation.CREATE_SERVICE.name()),
+                eq(key),
+                eq("github-hash")
+        )).thenReturn(0);
+
+        IdempotencyRecord existingRecord = new IdempotencyRecord(
+                userId,
+                IdempotencyOperation.CREATE_SERVICE,
+                key,
+                "google-hash",
+                Instant.parse("2026-01-01T10:00:00Z")
+        );
+
+        existingRecord.setResponseStatus(201);
+        existingRecord.setResponseBody("{\"name\":\"Google\"}");
+
+        when(idempotencyRecordRepository.findById(
+                any(IdempotencyRecordId.class)
+        )).thenReturn(Optional.of(existingRecord));
+
+        // First request claims the key and creates the service.
+        // We simulate its completed record for the second request.
+        when(serviceRepository.save(any(MonitoredService.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(objectMapper.writeValueAsString(any(ServiceResponse.class)))
+                .thenReturn("{\"name\":\"Google\"}");
+
+        serviceService.createService(firstRequest, userId, key);
+
+        // The same key with a different payload must be rejected.
+        assertThatThrownBy(() ->
+                serviceService.createService(secondRequest, userId, key)
+        ).isInstanceOf(IdempotencyKeyConflictException.class);
+
+        // The conflicting request must not create another service.
+        verify(serviceRepository, times(1))
+                .save(any(MonitoredService.class));
+    }
+
+    @Test
+    void createService_withSameKeyForDifferentUsers_shouldAllowBoth()
+            throws Exception {
+
+        UUID secondUserId = UUID.randomUUID();
+        String key = "shared-key";
+
+        CreateServiceRequest googleRequest = new CreateServiceRequest(
+                "Google", "https://google.com", 60, 5000
+        );
+
+        CreateServiceRequest githubRequest = new CreateServiceRequest(
+                "GitHub", "https://github.com", 60, 5000
+        );
+
+        when(requestHashService.calculateHash(googleRequest))
+                .thenReturn("google-hash");
+
+        when(requestHashService.calculateHash(githubRequest))
+                .thenReturn("github-hash");
+
+        // Both users can claim the same key independently.
+        when(idempotencyRecordRepository.claimKey(
+                eq(userId),
+                eq(IdempotencyOperation.CREATE_SERVICE.name()),
+                eq(key),
+                eq("google-hash")
+        )).thenReturn(1);
+
+        when(idempotencyRecordRepository.claimKey(
+                eq(secondUserId),
+                eq(IdempotencyOperation.CREATE_SERVICE.name()),
+                eq(key),
+                eq("github-hash")
+        )).thenReturn(1);
+
+        when(serviceRepository.save(any(MonitoredService.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(objectMapper.writeValueAsString(any(ServiceResponse.class)))
+                .thenReturn("{\"status\":\"UNKNOWN\"}");
+
+        when(idempotencyRecordRepository.findById(
+                any(IdempotencyRecordId.class)
+        )).thenAnswer(invocation -> {
+            IdempotencyRecordId id = invocation.getArgument(0);
+
+            String hash = id.getUserId().equals(userId)
+                    ? "google-hash"
+                    : "github-hash";
+
+            return Optional.of(new IdempotencyRecord(
+                    id.getUserId(),
+                    id.getOperation(),
+                    id.getIdempotencyKey(),
+                    hash,
+                    Instant.parse("2026-01-01T10:00:00Z")
+            ));
+        });
+
+        ServiceResponse googleResponse =
+                serviceService.createService(googleRequest, userId, key);
+
+        ServiceResponse githubResponse =
+                serviceService.createService(githubRequest, secondUserId, key);
+
+        assertThat(googleResponse.name()).isEqualTo("Google");
+        assertThat(githubResponse.name()).isEqualTo("GitHub");
+
+        verify(serviceRepository, times(2))
+                .save(any(MonitoredService.class));
+
+        verify(idempotencyRecordRepository, times(2))
+                .claimKey(
+                        any(UUID.class),
+                        eq(IdempotencyOperation.CREATE_SERVICE.name()),
+                        eq(key),
+                        any(String.class)
+                );
+    }
+
 }

@@ -1,6 +1,7 @@
 
 package com.pulse.api.monitorService.controller;
 
+import com.pulse.api.exception.IdempotencyKeyConflictException;
 import com.pulse.api.monitorService.dto.CreateServiceRequest;
 import com.pulse.api.monitorService.dto.ServiceResponse;
 import com.pulse.api.monitorService.service.ServiceService;
@@ -183,4 +184,116 @@ class ServiceControllerTest {
                                 """))
                 .andExpect(status().isUnauthorized());
     }
+
+
+    @Test
+    void createServiceWithoutIdempotencyKeyReturnsBadRequest() throws Exception {
+        UUID userId = UUID.randomUUID();
+
+        mockMvc.perform(post("/api/v1/services")
+                        .with(authenticatedAs(userId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "name": "Test Service",
+                              "url": "https://example.com/health",
+                              "checkIntervalSeconds": 60,
+                              "timeoutMs": 2000
+                            }
+                            """))
+                .andExpect(status().isBadRequest());
+
+        verify(serviceService, never()).createService(
+                any(CreateServiceRequest.class),
+                any(UUID.class),
+                anyString()
+        );
+    }
+
+    @Test
+    void createServiceWithBlankIdempotencyKeyReturnsBadRequest() throws Exception {
+        UUID userId = UUID.randomUUID();
+
+        mockMvc.perform(post("/api/v1/services")
+                        .with(authenticatedAs(userId))
+                        .header("Idempotency-Key", "   ")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "name": "Test Service",
+                              "url": "https://example.com/health",
+                              "checkIntervalSeconds": 60,
+                              "timeoutMs": 2000
+                            }
+                            """))
+                .andExpect(status().isBadRequest());
+
+        verify(serviceService, never()).createService(
+                any(CreateServiceRequest.class),
+                any(UUID.class),
+                anyString()
+        );
+    }
+
+    @Test
+    void createServiceWithOverlongIdempotencyKeyReturnsBadRequest() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String longKey = "a".repeat(256);
+
+        mockMvc.perform(post("/api/v1/services")
+                        .with(authenticatedAs(userId))
+                        .header("Idempotency-Key", longKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "name": "Test Service",
+                              "url": "https://example.com/health",
+                              "checkIntervalSeconds": 60,
+                              "timeoutMs": 2000
+                            }
+                            """))
+                .andExpect(status().isBadRequest());
+
+        verify(serviceService, never()).createService(
+                any(CreateServiceRequest.class),
+                any(UUID.class),
+                anyString()
+        );
+    }
+
+
+    @Test
+    void createServiceWithKeyConflictReturnsConflict() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String key = "already-used-key";
+
+        when(serviceService.createService(
+                any(CreateServiceRequest.class),
+                eq(userId),
+                eq(key)
+        )).thenThrow(new IdempotencyKeyConflictException(
+                "Idempotency key was already used with a different request"
+        ));
+
+        mockMvc.perform(post("/api/v1/services")
+                        .with(authenticatedAs(userId))
+                        .header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "name": "Different Service",
+                              "url": "https://example.com/health",
+                              "checkIntervalSeconds": 60,
+                              "timeoutMs": 2000
+                            }
+                            """))
+                .andExpect(status().isConflict());
+
+        verify(serviceService).createService(
+                any(CreateServiceRequest.class),
+                eq(userId),
+                eq(key)
+        );
+    }
+
 }

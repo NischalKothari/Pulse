@@ -6,9 +6,11 @@ import com.pulse.api.monitorService.dto.ServiceResponse;
 import com.pulse.api.monitorService.service.ServiceService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.net.URI;
 import java.util.List;
@@ -21,19 +23,39 @@ import java.util.UUID;
 public class ServiceController {
     private final ServiceService serviceService;
 
+
     @PostMapping
     public ResponseEntity<ServiceResponse> createService(
             @Valid @RequestBody CreateServiceRequest request,
-            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @RequestHeader(value = "Idempotency-Key", required = false)
+            String idempotencyKey,
             Authentication authentication
-            ){
+    ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Idempotency-Key header is required and must not be blank"
+            );
+        }
+
+        if (idempotencyKey.length() > 255) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Idempotency-Key must not exceed 255 characters"
+            );
+        }
+
         UUID userId = (UUID) authentication.getPrincipal();
+
         ServiceResponse response = serviceService.createService(
                 request, userId, idempotencyKey
         );
+
         URI location = URI.create("/api/v1/services/" + response.id());
+
         return ResponseEntity.created(location).body(response);
     }
+
 
     @GetMapping
     public ResponseEntity<List<ServiceResponse>> getMyServices(
