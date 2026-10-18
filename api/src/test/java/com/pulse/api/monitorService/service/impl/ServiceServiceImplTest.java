@@ -13,6 +13,12 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.pulse.api.monitorService.entity.IdempotencyOperation;
+import com.pulse.api.monitorService.entity.IdempotencyRecord;
+import com.pulse.api.monitorService.entity.IdempotencyRecordId;
+import com.pulse.api.monitorService.repository.IdempotencyRecordRepository;
+import com.pulse.api.monitorService.service.impl.RequestHashService;
+import tools.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -31,6 +37,15 @@ public class ServiceServiceImplTest {
 
     @InjectMocks
     private ServiceServiceImpl serviceService;
+
+    @Mock
+    private IdempotencyRecordRepository idempotencyRecordRepository;
+
+    @Mock
+    private RequestHashService requestHashService;
+
+    @Mock
+    private ObjectMapper objectMapper;
 
     private UUID userId;
     private UUID serviceId;
@@ -55,21 +70,52 @@ public class ServiceServiceImplTest {
     }
 
     @Test
-    void createService_shouldSaveAndReturnResponse(){
+    void createService_shouldSaveAndReturnResponse() throws Exception {
         CreateServiceRequest request = new CreateServiceRequest(
                 "  Google  ",
                 "  https://google.com  ",
                 60,
                 5000
         );
+
+        when(requestHashService.calculateHash(any(CreateServiceRequest.class)))
+                .thenReturn("test-hash");
+
+        when(idempotencyRecordRepository.claimKey(
+                eq(userId),
+                eq(IdempotencyOperation.CREATE_SERVICE.name()),
+                eq("test-key-123"),
+                eq("test-hash")
+        )).thenReturn(1);
+
         when(serviceRepository.save(any(MonitoredService.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        ServiceResponse response =
-                serviceService.createService(request, userId);
+        when(objectMapper.writeValueAsString(any(ServiceResponse.class)))
+                .thenReturn("{\"name\":\"Google\"}");
 
-        ArgumentCaptor<MonitoredService> captor = ArgumentCaptor.forClass(MonitoredService.class);
+        when(idempotencyRecordRepository.findById(any(IdempotencyRecordId.class)))
+                .thenAnswer(invocation -> {
+                    IdempotencyRecordId id = invocation.getArgument(0);
+
+                    return Optional.of(new IdempotencyRecord(
+                            id.getUserId(),
+                            IdempotencyOperation.CREATE_SERVICE,
+                            id.getIdempotencyKey(),
+                            "test-hash",
+                            Instant.parse("2026-01-01T10:00:00Z")
+                    ));
+                });
+
+        ServiceResponse response = serviceService.createService(
+                request, userId, "test-key-123"
+        );
+
+        ArgumentCaptor<MonitoredService> captor =
+                ArgumentCaptor.forClass(MonitoredService.class);
+
         verify(serviceRepository).save(captor.capture());
+
         MonitoredService saved = captor.getValue();
 
         assertThat(saved.getId()).isNotNull();
@@ -83,6 +129,8 @@ public class ServiceServiceImplTest {
         assertThat(response.name()).isEqualTo("Google");
         assertThat(response.url()).isEqualTo("https://google.com");
         assertThat(response.status()).isEqualTo("UNKNOWN");
+
+        verify(idempotencyRecordRepository).save(any(IdempotencyRecord.class));
     }
 
     @Test

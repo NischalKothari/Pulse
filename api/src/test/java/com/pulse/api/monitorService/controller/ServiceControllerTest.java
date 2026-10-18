@@ -83,11 +83,12 @@ class ServiceControllerTest {
                 Instant.parse("2026-01-01T10:00:00Z"));
 
         when(serviceService.createService(any(CreateServiceRequest.class),
-                eq(userId))).thenReturn(response);
+                eq(userId),eq("test-key-123"))).thenReturn(response);
 
         mockMvc.perform(
                         post("/api/v1/services")
                                 .with(authenticatedAs(userId))
+                                .header("Idempotency-Key", "test-key-123")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
                         {
@@ -104,7 +105,7 @@ class ServiceControllerTest {
                 .andExpect(jsonPath("$.name").value("Google"));
 
         verify(serviceService).createService(any(CreateServiceRequest.class),
-                eq(userId));
+                eq(userId),eq("test-key-123"));
     }
 
     @Test

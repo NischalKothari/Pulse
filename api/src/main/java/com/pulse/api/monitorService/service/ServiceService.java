@@ -10,7 +10,8 @@ public interface ServiceService {
 
     ServiceResponse createService(
             CreateServiceRequest request,
-            UUID userId
+            UUID userId,
+            String idempotencyKey
     );
 
     List<ServiceResponse> getMyServices(UUID userId);

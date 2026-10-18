@@ -24,11 +24,12 @@ public class ServiceController {
     @PostMapping
     public ResponseEntity<ServiceResponse> createService(
             @Valid @RequestBody CreateServiceRequest request,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
             Authentication authentication
             ){
         UUID userId = (UUID) authentication.getPrincipal();
         ServiceResponse response = serviceService.createService(
-                request, userId
+                request, userId, idempotencyKey
         );
         URI location = URI.create("/api/v1/services/" + response.id());
         return ResponseEntity.created(location).body(response);
