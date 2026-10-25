@@ -66,7 +66,8 @@ public class ServiceServiceImplTest {
                 5000,
                 "UNKNOWN",
                 now,
-                now
+                now,
+                null
         );
     }
 

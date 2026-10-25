@@ -115,7 +115,8 @@ public class ServiceServiceImpl implements ServiceService {
                 normalizedRequest.timeoutMs(),
                 "UNKNOWN",
                 now,
-                now
+                now,
+                null
         );
 
         MonitoredService savedService = serviceRepository.save(service);
