@@ -12,6 +12,10 @@ import com.pulse.api.monitorService.repository.IdempotencyRecordRepository;
 import com.pulse.api.monitorService.repository.ServiceRepository;
 import com.pulse.api.monitorService.service.ServiceService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
@@ -115,8 +119,7 @@ public class ServiceServiceImpl implements ServiceService {
                 normalizedRequest.timeoutMs(),
                 "UNKNOWN",
                 now,
-                now,
-                null
+                now
         );
 
         MonitoredService savedService = serviceRepository.save(service);
@@ -162,11 +165,15 @@ public class ServiceServiceImpl implements ServiceService {
 
     @Transactional
     @Override
-    public List<ServiceResponse> getMyServices(UUID userId) {
-        return serviceRepository.findAllByUserId(userId)
-                .stream()
-                .map(this::mapToResponse)
-                .toList();
+    public Page<ServiceResponse> getMyServices(UUID userId , int pageNumber , int pageSize) {
+        Sort sort = Sort.by(
+                Sort.Direction.DESC,"createdAt"
+        ).and(
+                Sort.by(Sort.Direction.DESC, "id")
+        );
+        Pageable pageable = PageRequest.of(pageNumber, pageSize,sort);
+        Page<MonitoredService> servicePage= serviceRepository.findAllByUserId(userId,pageable);
+        return servicePage.map(this::mapToResponse);
     }
 
     @Override

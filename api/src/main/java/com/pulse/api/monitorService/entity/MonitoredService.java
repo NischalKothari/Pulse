@@ -10,7 +10,6 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "services")
-@AllArgsConstructor
 @NoArgsConstructor
 @Getter
 public class MonitoredService {
@@ -46,4 +45,29 @@ public class MonitoredService {
     @Column(nullable = false)
     private Long version;
 
+    public MonitoredService(
+            UUID id,
+            UUID userId,
+            String name,
+            String url,
+            Integer checkIntervalSeconds,
+            Integer timeoutMs,
+            String status,
+            Instant createdAt,
+            Instant updatedAt
+    ) {
+        this.id = id;
+        this.userId = userId;
+        this.name = name;
+        this.url = url;
+        this.checkIntervalSeconds = checkIntervalSeconds;
+        this.timeoutMs = timeoutMs;
+        this.status = status;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
+    }
+
+    public void updateTimeout(Integer timeoutMs) {
+        this.timeoutMs = timeoutMs;
+    }
 }

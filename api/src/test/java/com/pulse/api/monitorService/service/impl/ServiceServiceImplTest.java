@@ -19,6 +19,7 @@ import com.pulse.api.monitorService.entity.IdempotencyRecord;
 import com.pulse.api.monitorService.entity.IdempotencyRecordId;
 import com.pulse.api.monitorService.repository.IdempotencyRecordRepository;
 import com.pulse.api.monitorService.service.impl.RequestHashService;
+import org.springframework.data.domain.*;
 import tools.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.List;
@@ -27,6 +28,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -66,8 +68,7 @@ public class ServiceServiceImplTest {
                 5000,
                 "UNKNOWN",
                 now,
-                now,
-                null
+                now
         );
     }
 
@@ -135,31 +136,85 @@ public class ServiceServiceImplTest {
         verify(idempotencyRecordRepository).save(any(IdempotencyRecord.class));
     }
 
+
     @Test
     void getMyServices_shouldReturnOnlyRepositoryResults() {
-        when(serviceRepository.findAllByUserId(userId))
-                .thenReturn(List.of(monitoredService));
+        // Arrange: prepare a service that the repository will return
+        MonitoredService service = monitoredService;
 
-        List<ServiceResponse> responses =
-                serviceService.getMyServices(userId);
+        Page<MonitoredService> repositoryPage =
+                new PageImpl<>(List.of(service));
 
-        assertThat(responses).hasSize(1);
-        assertThat(responses.get(0).id()).isEqualTo(serviceId);
-        assertThat(responses.get(0).name()).isEqualTo("Google");
+        when(serviceRepository.findAllByUserId(
+                eq(userId),
+                any(Pageable.class)
+        )).thenReturn(repositoryPage);
 
-        verify(serviceRepository).findAllByUserId(userId);
+        // Act: request page 0 with 10 services per page
+        Page<ServiceResponse> result =
+                serviceService.getMyServices(userId, 0, 10);
+
+        // Assert: check the returned service
+        assertEquals(1, result.getContent().size());
+        assertEquals(service.getName(), result.getContent().get(0).name());
+
+        // Assert: check pagination metadata
+        assertEquals(1, result.getTotalElements());
+        assertEquals(1, result.getTotalPages());
+
+        // Assert: verify the repository was called with the expected sorting
+        ArgumentCaptor<Pageable> captor =
+                ArgumentCaptor.forClass(Pageable.class);
+
+        verify(serviceRepository).findAllByUserId(
+                eq(userId),
+                captor.capture()
+        );
+
+        Pageable actualPageable = captor.getValue();
+
+        assertEquals(0, actualPageable.getPageNumber());
+        assertEquals(10, actualPageable.getPageSize());
+
+        Sort sort = actualPageable.getSort();
+
+        assertEquals(
+                List.of("createdAt", "id"),
+                sort.stream().map(Sort.Order::getProperty).toList()
+        );
+
+        assertEquals(
+                List.of(Sort.Direction.DESC, Sort.Direction.DESC),
+                sort.stream().map(Sort.Order::getDirection).toList()
+        );
     }
+
+
 
     @Test
-    void getMyServices_whenNoServices_shouldReturnEmptyList() {
-        when(serviceRepository.findAllByUserId(userId))
-                .thenReturn(List.of());
+    void getMyServices_whenNoServices_shouldReturnEmptyPage() {
+        Page<MonitoredService> emptyPage = new PageImpl<>(
+                List.of(), PageRequest.of(0,10) , 0
+        );
 
-        List<ServiceResponse> responses =
-                serviceService.getMyServices(userId);
+        when(serviceRepository.findAllByUserId(
+                eq(userId),
+                any(Pageable.class)
+        )).thenReturn(emptyPage);
 
-        assertThat(responses).isEmpty();
+        Page<ServiceResponse> result =
+                serviceService.getMyServices(userId, 0, 10);
+
+        assertThat(result.getContent()).isEmpty();
+        assertThat(result.getTotalElements()).isZero();
+        assertThat(result.getTotalPages()).isZero();
+
+        verify(serviceRepository).findAllByUserId(
+                eq(userId),
+                any(Pageable.class)
+        );
     }
+
 
     @Test
     void getServiceById_whenOwnedServiceExists_shouldReturnResponse() {

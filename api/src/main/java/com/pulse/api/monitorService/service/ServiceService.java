@@ -2,6 +2,8 @@ package com.pulse.api.monitorService.service;
 
 import com.pulse.api.monitorService.dto.CreateServiceRequest;
 import com.pulse.api.monitorService.dto.ServiceResponse;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 import java.util.UUID;
@@ -14,7 +16,7 @@ public interface ServiceService {
             String idempotencyKey
     );
 
-    List<ServiceResponse> getMyServices(UUID userId);
+    Page<ServiceResponse> getMyServices(UUID userId, int pageNumber, int pageSize);
 
     ServiceResponse getServiceById(UUID serviceId, UUID userId);
 

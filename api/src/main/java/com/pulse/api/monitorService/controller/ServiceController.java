@@ -6,6 +6,7 @@ import com.pulse.api.monitorService.dto.ServiceResponse;
 import com.pulse.api.monitorService.service.ServiceService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -58,13 +59,15 @@ public class ServiceController {
 
 
     @GetMapping
-    public ResponseEntity<List<ServiceResponse>> getMyServices(
-            Authentication authentication
+    public ResponseEntity<Page<ServiceResponse>> getMyServices(
+            Authentication authentication,
+            @RequestParam("page") int pageNumber,
+            @RequestParam("size") int pageSize
     ) {
         UUID userId = (UUID) authentication.getPrincipal();
 
         return ResponseEntity.ok(
-                serviceService.getMyServices(userId)
+                serviceService.getMyServices(userId, pageNumber , pageSize)
         );
     }
 

@@ -8,6 +8,9 @@ import com.pulse.api.monitorService.service.ServiceService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.AuthorityUtils;
@@ -115,17 +118,33 @@ class ServiceControllerTest {
                 serviceId, "Google", "https://google.com",
                 60, 5000, "UNKNOWN",
                 Instant.parse("2026-01-01T10:00:00Z"),
-                Instant.parse("2026-01-01T10:00:00Z"));
+                Instant.parse("2026-01-01T10:00:00Z")
+        );
 
-        when(serviceService.getMyServices(userId))
-                .thenReturn(List.of(response));
+        Page<ServiceResponse> responsePage = new PageImpl<>(
+                List.of(response),
+                PageRequest.of(0, 20),
+                1
+        );
+
+        when(serviceService.getMyServices(userId, 0, 20))
+                .thenReturn(responsePage);
 
         mockMvc.perform(get("/api/v1/services")
+                        .param("page", "0")
+                        .param("size", "20")
                         .with(authenticatedAs(userId)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].name").value("Google"));
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].name").value("Google"))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1))
+                .andExpect(jsonPath("$.number").value(0))
+                .andExpect(jsonPath("$.size").value(20));
+
+        verify(serviceService).getMyServices(userId, 0, 20);
     }
+
 
     @Test
     void getServiceById_shouldReturn200() throws Exception {

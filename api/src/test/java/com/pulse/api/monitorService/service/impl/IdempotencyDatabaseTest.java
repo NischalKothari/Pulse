@@ -11,6 +11,7 @@ import com.pulse.api.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -134,7 +135,10 @@ class IdempotencyDatabaseTest {
                 serviceService.createService(request, userId, key);
 
         // Assert 1: exactly one service exists.
-        assertThat(serviceRepository.findAllByUserId(userId))
+        assertThat(serviceRepository.findAllByUserId(
+                userId,
+                PageRequest.of(0, 100)
+        ).getContent())
                 .hasSize(1);
 
         // Act 2: retry with the same key and identical payload.
@@ -144,7 +148,10 @@ class IdempotencyDatabaseTest {
         // Assert 2: the original response is replayed.
         assertThat(retryResponse).isEqualTo(firstResponse);
 
-        assertThat(serviceRepository.findAllByUserId(userId))
+        assertThat(serviceRepository.findAllByUserId(
+                userId,
+                PageRequest.of(0, 100)
+        ).getContent())
                 .hasSize(1);
 
         // Act 3: reuse the key with a different payload.
@@ -160,7 +167,10 @@ class IdempotencyDatabaseTest {
                 serviceService.createService(changedRequest, userId, key)
         ).isInstanceOf(IdempotencyKeyConflictException.class);
 
-        assertThat(serviceRepository.findAllByUserId(userId))
+        assertThat(serviceRepository.findAllByUserId(
+                userId,
+                PageRequest.of(0, 100)
+        ).getContent())
                 .hasSize(1);
     }
 
@@ -202,7 +212,10 @@ class IdempotencyDatabaseTest {
                     .hasMessage("Simulated serialization failure");
 
             // Inspect the database after the service transaction rolls back.
-            assertThat(serviceRepository.findAllByUserId(userId))
+            assertThat(serviceRepository.findAllByUserId(
+                    userId,
+                    PageRequest.of(0, 100)
+            ).getContent())
                     .isEmpty();
 
             IdempotencyRecordId recordId = new IdempotencyRecordId(
@@ -285,7 +298,10 @@ class IdempotencyDatabaseTest {
                     .isEqualTo(secondResponse.id());
 
             // Exactly one service must exist for this user.
-            assertThat(serviceRepository.findAllByUserId(userId))
+            assertThat(serviceRepository.findAllByUserId(
+                    userId,
+                    PageRequest.of(0, 100)
+            ).getContent())
                     .hasSize(1);
 
             IdempotencyRecordId recordId = new IdempotencyRecordId(
@@ -436,7 +452,10 @@ class IdempotencyDatabaseTest {
 
             // Only one service was created.
             List<MonitoredService> services =
-                    serviceRepository.findAllByUserId(userId);
+                    serviceRepository.findAllByUserId(
+                            userId,
+                            PageRequest.of(0, 100)
+                    ).getContent();
 
             assertThat(services).hasSize(1);
             assertThat(services.get(0).getId())

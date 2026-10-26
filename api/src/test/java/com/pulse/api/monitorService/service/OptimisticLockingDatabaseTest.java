@@ -71,8 +71,7 @@ class OptimisticLockingDatabaseTest {
                     5000,
                     "UNKNOWN",
                     now,
-                    now,
-                    null
+                    now
             );
 
             serviceRepository.saveAndFlush(service);
@@ -90,7 +89,7 @@ class OptimisticLockingDatabaseTest {
     }
 
     @Test
-    void staleUpdateIsRejected() throws Exception {
+    void staleUpdateIsRejected(){
 
         // Transaction A reads its copy of the service.
         MonitoredService serviceA = loadInNewTransaction();
@@ -109,13 +108,21 @@ class OptimisticLockingDatabaseTest {
             MonitoredService managed =
                     serviceRepository.findById(serviceId).orElseThrow();
 
-            try {
-                setField(managed, "timeoutMs", 3000);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
+            managed.updateTimeout(3000);
 
             serviceRepository.flush();
+
+            return null;
+        });
+
+        TransactionTemplate versionCheck =
+                new TransactionTemplate(transactionManager);
+
+        versionCheck.execute(status -> {
+            MonitoredService current =
+                    serviceRepository.findById(serviceId).orElseThrow();
+
+            assertTrue(current.getVersion() > serviceB.getVersion());
 
             return null;
         });
@@ -128,7 +135,7 @@ class OptimisticLockingDatabaseTest {
                 TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 
         // B's entity still carries the old version.
-        setField(serviceB, "timeoutMs", 8000);
+        serviceB.updateTimeout(8000);
 
         assertThrows(
                 ObjectOptimisticLockingFailureException.class,
@@ -163,14 +170,5 @@ class OptimisticLockingDatabaseTest {
         return transaction.execute(status ->
                 serviceRepository.findById(serviceId).orElseThrow()
         );
-    }
-    private void setField(
-            MonitoredService service,
-            String fieldName,
-            Object value
-    ) throws Exception {
-        var field = MonitoredService.class.getDeclaredField(fieldName);
-        field.setAccessible(true);
-        field.set(service, value);
     }
 }
