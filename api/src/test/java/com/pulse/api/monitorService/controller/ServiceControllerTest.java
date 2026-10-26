@@ -6,6 +6,8 @@ import com.pulse.api.monitorService.dto.CreateServiceRequest;
 import com.pulse.api.monitorService.dto.ServiceResponse;
 import com.pulse.api.monitorService.service.ServiceService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.data.domain.Page;
@@ -34,6 +36,9 @@ import org.springframework.context.annotation.Import;
 
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureWebMvc;
 import org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration;
+
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+
 
 @WebMvcTest(
         controllers = ServiceController.class,
@@ -313,6 +318,97 @@ class ServiceControllerTest {
                 eq(userId),
                 eq(key)
         );
+    }
+
+    @Test
+    void getMyServices_whenParametersMissing_shouldUseDefaults() throws Exception {
+        UUID userId = UUID.randomUUID();
+
+        Page<ServiceResponse> emptyPage = new PageImpl<>(
+                List.of(),
+                PageRequest.of(0, 20),
+                0
+        );
+
+        when(serviceService.getMyServices(userId, 0, 20))
+                .thenReturn(emptyPage);
+
+        mockMvc.perform(get("/api/v1/services")
+                        .with(authentication(
+                                new UsernamePasswordAuthenticationToken(
+                                        userId, null, List.of()
+                                )
+                        )))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.number").value(0))
+                .andExpect(jsonPath("$.size").value(20))
+                .andExpect(jsonPath("$.totalElements").value(0));
+
+        verify(serviceService).getMyServices(userId, 0, 20);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "?page=-1",
+            "?size=0",
+            "?size=101",
+            "?page=abc"
+    })
+    void getMyServices_whenPaginationParametersInvalid_shouldReturnBadRequest(
+            String query
+    ) throws Exception {
+        UUID userId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/v1/services" + query)
+                        .with(authentication(
+                                new UsernamePasswordAuthenticationToken(
+                                        userId, null, List.of()
+                                )
+                        )))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(serviceService);
+    }
+
+
+    @Test
+    void getMyServices_whenPageIsNegative_shouldReturnStandardErrorResponse()
+            throws Exception {
+
+        UUID userId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/v1/services?page=-1")
+                        .with(authentication(
+                                new UsernamePasswordAuthenticationToken(
+                                        userId, null, List.of()
+                                )
+                        )))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").exists())
+                .andExpect(jsonPath("$.timestamp").exists());
+
+        verifyNoInteractions(serviceService);
+    }
+
+    @Test
+    void getMyServices_whenPageIsNotNumeric_shouldReturnStandardErrorResponse()
+            throws Exception {
+
+        UUID userId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/v1/services?page=abc")
+                        .with(authentication(
+                                new UsernamePasswordAuthenticationToken(
+                                        userId, null, List.of()
+                                )
+                        )))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").exists())
+                .andExpect(jsonPath("$.timestamp").exists());
+
+        verifyNoInteractions(serviceService);
     }
 
 }

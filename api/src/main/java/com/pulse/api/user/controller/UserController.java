@@ -11,11 +11,18 @@ import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
 
+import io.swagger.v3.oas.annotations.Operation;
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("api/v1/users")
 public class UserController {
     private final UserService userService;
+    @Operation(
+            summary = "Register a new user",
+            description = "Creates a user account. Authentication is not required.",
+            security = {}
+    )
     @PostMapping("register")
     public ResponseEntity<UserResponse> registerUser(@RequestBody @Valid RegisterRequest request){
         UserResponse response = userService.register(request);

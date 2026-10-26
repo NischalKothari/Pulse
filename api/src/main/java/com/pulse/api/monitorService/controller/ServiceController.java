@@ -18,16 +18,42 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/services")
 public class ServiceController {
     private final ServiceService serviceService;
 
-
+    @Operation(
+            summary = "Create a monitored service",
+            description = """
+        Registers an HTTP endpoint for monitoring.
+        Requires a unique Idempotency-Key for the operation.
+        Repeating the same request with the same key returns
+        the original result.
+        """
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Service created"),
+            @ApiResponse(responseCode = "400", description = "Invalid request"),
+            @ApiResponse(responseCode = "401", description = "Authentication required"),
+            @ApiResponse(responseCode = "409", description = "Idempotency key conflict")
+    })
     @PostMapping
     public ResponseEntity<ServiceResponse> createService(
             @Valid @RequestBody CreateServiceRequest request,
+            @Parameter(
+                    name = "Idempotency-Key",
+                    description = "Unique key for safely retrying this creation request",
+                    required = true,
+                    in = ParameterIn.HEADER
+            )
             @RequestHeader(value = "Idempotency-Key", required = false)
             String idempotencyKey,
             Authentication authentication
@@ -58,18 +84,34 @@ public class ServiceController {
     }
 
 
+
     @GetMapping
     public ResponseEntity<Page<ServiceResponse>> getMyServices(
             Authentication authentication,
-            @RequestParam("page") int pageNumber,
-            @RequestParam("size") int pageSize
+            @RequestParam(name = "page", defaultValue = "0") int pageNumber,
+            @RequestParam(name = "size", defaultValue = "20") int pageSize
     ) {
+        if (pageNumber < 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Page number must be greater than or equal to 0"
+            );
+        }
+
+        if (pageSize < 1 || pageSize > 100) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Page size must be between 1 and 100"
+            );
+        }
+
         UUID userId = (UUID) authentication.getPrincipal();
 
         return ResponseEntity.ok(
-                serviceService.getMyServices(userId, pageNumber , pageSize)
+                serviceService.getMyServices(userId, pageNumber, pageSize)
         );
     }
+
 
     @GetMapping("/{serviceId}")
     public ResponseEntity<ServiceResponse> getServiceById(
