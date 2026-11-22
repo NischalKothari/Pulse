@@ -247,4 +247,86 @@ class ServicePaginationDatabaseTest {
         }
     }
 
+    @Test
+    void userCannotRetrieveAnotherUsersService() {
+        UUID userBId = UUID.randomUUID();
+        Instant now = Instant.now();
+        Timestamp timestamp = Timestamp.from(now);
+
+        jdbcTemplate.update("""
+        INSERT INTO users (
+            id, email, password_hash, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+                userBId,
+                "owner-" + userBId + "@example.com",
+                "test-password-hash",
+                timestamp,
+                timestamp
+        );
+
+        UUID otherUsersServiceId = UUID.randomUUID();
+
+        try {
+            createService(userBId, "UserB-Service", now);
+
+            UUID actualServiceId = serviceIds.get(serviceIds.size() - 1);
+
+            assertNotEquals(userId, userBId);
+
+            assertThrows(
+                    com.pulse.api.exception.ResourceNotFoundException.class,
+                    () -> serviceService.getServiceById(
+                            actualServiceId, userId
+                    )
+            );
+        } finally {
+            jdbcTemplate.update(
+                    "DELETE FROM services WHERE user_id = ?", userBId
+            );
+            jdbcTemplate.update(
+                    "DELETE FROM users WHERE id = ?", userBId
+            );
+        }
+    }
+
+    @Test
+    void userCannotDeleteAnotherUsersService() {
+        UUID userBId = UUID.randomUUID();
+        Instant now = Instant.now();
+        Timestamp timestamp = Timestamp.from(now);
+
+        jdbcTemplate.update("""
+        INSERT INTO users (
+            id, email, password_hash, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+                userBId,
+                "owner-" + userBId + "@example.com",
+                "test-password-hash",
+                timestamp,
+                timestamp
+        );
+
+        try {
+            createService(userBId, "UserB-Service", now);
+
+            UUID otherUsersServiceId = serviceIds.get(serviceIds.size() - 1);
+
+            assertFalse(
+                    serviceService.deleteService(otherUsersServiceId, userId)
+            );
+
+            assertTrue(
+                    serviceRepository.existsById(otherUsersServiceId)
+            );
+        } finally {
+            jdbcTemplate.update(
+                    "DELETE FROM services WHERE user_id = ?", userBId
+            );
+            jdbcTemplate.update(
+                    "DELETE FROM users WHERE id = ?", userBId
+            );
+        }
+    }
 }

@@ -1,7 +1,8 @@
 services:
   postgres:
-    image: postgres:16
+    image: postgres:18
     container_name: pulse-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: pulse
       POSTGRES_USER: pulse
@@ -9,7 +10,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
 
 volumes:
   postgres_data:

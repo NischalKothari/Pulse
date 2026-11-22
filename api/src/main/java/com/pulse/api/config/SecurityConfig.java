@@ -1,6 +1,10 @@
 package com.pulse.api.config;
 
 import com.pulse.api.user.security.JwtAuthenticationFilter;
+import com.pulse.api.rateLimit.RateLimitFilter;
+import com.pulse.api.rateLimit.RateLimitKeyResolver;
+import com.pulse.api.rateLimit.TokenBucketStore;
+import tools.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -12,6 +16,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 
 @EnableWebSecurity
@@ -20,6 +25,9 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final RateLimitKeyResolver rateLimitKeyResolver;
+    private final TokenBucketStore tokenBucketStore;
+    private final ObjectMapper objectMapper;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -28,6 +36,14 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+
+        // Construct this filter for the Spring Security chain only. It is not a
+        // servlet Filter bean, so the container cannot independently register it.
+        RateLimitFilter rateLimitFilter = new RateLimitFilter(
+                rateLimitKeyResolver,
+                tokenBucketStore,
+                objectMapper
+        );
 
         http
                 .csrf(csrf -> csrf.disable())
@@ -65,7 +81,8 @@ public class SecurityConfig {
                                 }
                         )
                 )
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(rateLimitFilter, AuthorizationFilter.class);
 
         return http.build();
     }

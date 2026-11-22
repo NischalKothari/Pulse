@@ -5,6 +5,8 @@ import com.pulse.api.exception.IdempotencyKeyConflictException;
 import com.pulse.api.monitorService.dto.CreateServiceRequest;
 import com.pulse.api.monitorService.dto.ServiceResponse;
 import com.pulse.api.monitorService.service.ServiceService;
+import com.pulse.api.rateLimit.RateLimitKeyResolver;
+import com.pulse.api.rateLimit.TokenBucketStore;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -24,6 +26,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -57,6 +60,17 @@ class ServiceControllerTest {
 
     @MockitoBean
     private JwtService jwtService;
+
+    @MockitoBean
+    private RateLimitKeyResolver rateLimitKeyResolver;
+
+    @MockitoBean
+    private TokenBucketStore tokenBucketStore;
+
+    @org.junit.jupiter.api.BeforeEach
+    void bypassRateLimitForControllerSlice() {
+        when(rateLimitKeyResolver.resolve(any())).thenReturn(Optional.empty());
+    }
 
     private final UUID userId = UUID.randomUUID();
     private final UUID serviceId = UUID.randomUUID();
