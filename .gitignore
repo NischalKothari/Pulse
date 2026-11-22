@@ -1,2 +1,5 @@
 docs/
 AGENTS.md
+!docs/
+docs/*
+!docs/README.md
